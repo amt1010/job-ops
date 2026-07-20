@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { resolveCli, spawnCli } from "@/lib/clis";
+import { resolveCli, spawnCli, type CliChild } from "@/lib/clis";
 import { careerOpsRoot, readMemory } from "@/lib/career-ops";
 import { acquireTrackerWrite, releaseTrackerWrite } from "@/lib/core/run-registry";
+import { acquireRunSlot } from "@/lib/core/run-gate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -120,6 +121,10 @@ export async function POST(req: Request) {
       : { allowed: "Read,WebFetch,WebSearch,Glob,Grep", disallowed: "Bash,Write,Edit,NotebookEdit,Task" };
   const claudeArgs = ["--output-format", "stream-json", "--verbose", "--include-partial-messages",
     "--permission-mode", "acceptEdits",
+    // Load ZERO MCP servers: the evaluator only needs built-in tools (Read/WebFetch/
+    // Bash/…), never the user's global playwright/gmail/… servers. Skipping them cuts
+    // per-worker startup cost sharply — critical when a batch runs several at once.
+    "--strict-mcp-config",
     "--allowedTools", tools.allowed,
     "--disallowedTools", tools.disallowed];
 
@@ -134,33 +139,31 @@ export async function POST(req: Request) {
     }
   };
   const persists = kind === "evaluate";
-  const reportsBefore = persists ? countReports() : 0;
+  // Captured post-gate, immediately before spawn — NOT at request time — so a run
+  // that waits in the concurrency queue doesn't miscount reports written meanwhile.
+  let reportsBefore = 0;
   // Tracker-mutating runs hold a write token so a row delete can't race their merge
   // (tracker.mjs delete doesn't yet share a lock with merge-tracker — see run-registry).
   const writeToken = kind === "evaluate" || kind === "pdf" ? acquireTrackerWrite() : null;
-
-  // spawnCli handles the cross-platform launch (direct on POSIX/.exe; shell +
-  // stdin-delivered prompt on a Windows .cmd/.bat shim).
-  const child = spawnCli({ binPath, spec, isClaude, prompt, claudeArgs, cwd: careerOpsRoot() });
   const enc = new TextEncoder();
 
-  // `closed` + kill timer in the OUTER scope so cancel() (client disconnect) can
-  // flip `closed` before the child's late handlers run, and send() is try/catch'd —
-  // otherwise a late enqueue onto a closed controller throws uncaught (see #1155).
+  // child + gate slot live in the OUTER scope so cancel() can reach them even when
+  // the client disconnects while the run is still queued behind the concurrency gate.
+  // `closed` + kill timer are outer too so cancel() can flip `closed` before the
+  // child's late handlers run (send() is try/catch'd — a late enqueue onto a closed
+  // controller would otherwise throw uncaught, see #1155).
+  let child: CliChild | null = null;
+  let slotRelease: (() => void) | null = null;
+  let cancelled = false;
   let closed = false;
   let killer: ReturnType<typeof setTimeout> | undefined;
   const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
+    async start(controller) {
       let buf = "";
       let emittedText = false; // any assistant text delta → the CLI actually ran
       let sawError = false;
       let lastTokens = 0; // per-run token cost from the Claude result event (#6) — local only
       let lastCostUsd: number | null = null;
-      // pdf-mode tailors a full CV + renders it — give it more headroom.
-      const killMs = kind === "pdf" ? 720_000 : 285_000;
-      killer = setTimeout(() => {
-        try { child.kill("SIGTERM"); } catch { /* ignore */ }
-      }, killMs);
       const send = (obj: unknown) => {
         if (closed) return;
         try { controller.enqueue(enc.encode(JSON.stringify(obj) + "\n")); } catch { closed = true; }
@@ -169,10 +172,37 @@ export async function POST(req: Request) {
         if (!closed) {
           closed = true;
           if (killer) clearTimeout(killer);
+          if (slotRelease) { slotRelease(); slotRelease = null; }
           if (writeToken !== null) releaseTrackerWrite(writeToken);
           try { controller.close(); } catch { /* */ }
         }
       };
+
+      // Wait for a worker slot before spawning. A batch fires many runs at once; the
+      // gate bounds how many heavyweight `claude` sessions run concurrently so they
+      // don't starve each other into startup crashes / timeout kills (root cause of
+      // the "is it installed?" + "didn't save a report" batch failures).
+      slotRelease = await acquireRunSlot();
+      if (cancelled) {
+        // Client disconnected while queued: cancel() already closed the stream, so
+        // hand the slot straight back — close() would no-op on the already-set
+        // `closed` flag and leak the slot forever.
+        slotRelease();
+        slotRelease = null;
+        return;
+      }
+
+      // Snapshot reports/ now (post-gate) so we can verify THIS worker persisted.
+      reportsBefore = persists ? countReports() : 0;
+      // spawnCli handles the cross-platform launch (direct on POSIX/.exe; shell +
+      // stdin-delivered prompt on a Windows .cmd/.bat shim).
+      child = spawnCli({ binPath, spec, isClaude, prompt, claudeArgs, cwd: careerOpsRoot() });
+      // pdf-mode tailors a full CV + renders it — give it more headroom. Timer starts
+      // at spawn (not request time) so queue wait doesn't eat the budget.
+      const killMs = kind === "pdf" ? 720_000 : 285_000;
+      killer = setTimeout(() => {
+        try { child?.kill("SIGTERM"); } catch { /* ignore */ }
+      }, killMs);
 
       child.stdout.on("data", (d: Buffer) => {
         if (closed) return;
@@ -247,10 +277,12 @@ export async function POST(req: Request) {
       });
     },
     cancel() {
+      cancelled = true;
       closed = true;
       if (killer) clearTimeout(killer);
+      if (slotRelease) { slotRelease(); slotRelease = null; }
       if (writeToken !== null) releaseTrackerWrite(writeToken);
-      try { child.kill("SIGTERM"); } catch { /* ignore */ }
+      try { child?.kill("SIGTERM"); } catch { /* ignore */ }
     },
   });
 
