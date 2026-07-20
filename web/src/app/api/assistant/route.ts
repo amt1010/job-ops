@@ -1,5 +1,4 @@
-import { spawn } from "node:child_process";
-import { resolveCli } from "@/lib/clis";
+import { resolveCli, spawnCli } from "@/lib/clis";
 import { careerOpsRoot, readMemory, doctorState } from "@/lib/career-ops";
 
 export const runtime = "nodejs"; // child_process (spawn) requires the Node runtime
@@ -92,24 +91,19 @@ export async function POST(req: Request) {
   const isClaude = cliId === "claude";
   // allowedTools must be COMMA-separated; disallowedTools is the hard guardrail
   // so the advisor can read (and WebFetch) but never blind-writes or shells out.
-  const args = isClaude
-    ? [
-        "-p",
-        prompt,
-        "--output-format",
-        "stream-json",
-        "--verbose",
-        "--include-partial-messages",
-        "--permission-mode",
-        "acceptEdits",
-        "--allowedTools",
-        "Read,WebFetch,Glob,Grep",
-        "--disallowedTools",
-        "Bash,Write,Edit,NotebookEdit,Task",
-      ]
-    : spec.args(prompt);
-
-  const child = spawn(binPath, args, { cwd: careerOpsRoot(), env: process.env });
+  const child = spawnCli({
+    binPath,
+    spec,
+    isClaude,
+    prompt,
+    claudeArgs: [
+      "--output-format", "stream-json", "--verbose", "--include-partial-messages",
+      "--permission-mode", "acceptEdits",
+      "--allowedTools", "Read,WebFetch,Glob,Grep",
+      "--disallowedTools", "Bash,Write,Edit,NotebookEdit,Task",
+    ],
+    cwd: careerOpsRoot(),
+  });
 
   const encoder = new TextEncoder();
   // `closed` + kill timer in the OUTER scope so cancel() can flip `closed` before

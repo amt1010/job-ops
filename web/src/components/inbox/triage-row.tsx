@@ -67,10 +67,16 @@ export function TriageRow({
       <CompanyLogo name={job.company} size={20} />
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm">
+        <a
+          href={job.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={`Open posting — ${job.company} · ${job.role}`}
+          className="block truncate text-sm transition-colors hover:text-brand"
+        >
           <span className="font-medium text-foreground">{job.company}</span>
           <span className="text-muted"> · {job.role}</span>
-        </p>
+        </a>
         <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-faint">
           {job.location && <span className="truncate">{job.location}</span>}
           {source && <span className="rounded bg-surface-hover px-1 py-px font-medium text-muted">{ATS_LABEL[source]}</span>}

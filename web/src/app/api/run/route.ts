@@ -1,7 +1,6 @@
-import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { resolveCli } from "@/lib/clis";
+import { resolveCli, spawnCli } from "@/lib/clis";
 import { careerOpsRoot, readMemory } from "@/lib/career-ops";
 import { acquireTrackerWrite, releaseTrackerWrite } from "@/lib/core/run-registry";
 
@@ -119,12 +118,10 @@ export async function POST(req: Request) {
     kind === "evaluate" || kind === "fix-portal" || kind === "pdf"
       ? { allowed: "Read,WebFetch,WebSearch,Write,Edit,Bash,Glob,Grep", disallowed: "Task,NotebookEdit" }
       : { allowed: "Read,WebFetch,WebSearch,Glob,Grep", disallowed: "Bash,Write,Edit,NotebookEdit,Task" };
-  const args = isClaude
-    ? ["-p", prompt, "--output-format", "stream-json", "--verbose", "--include-partial-messages",
-       "--permission-mode", "acceptEdits",
-       "--allowedTools", tools.allowed,
-       "--disallowedTools", tools.disallowed]
-    : spec.args(prompt);
+  const claudeArgs = ["--output-format", "stream-json", "--verbose", "--include-partial-messages",
+    "--permission-mode", "acceptEdits",
+    "--allowedTools", tools.allowed,
+    "--disallowedTools", tools.disallowed];
 
   // For write-needing kinds, snapshot reports/ so we can verify the worker
   // actually persisted (non-Claude CLIs lack Write auth and silently no-op).
@@ -142,7 +139,9 @@ export async function POST(req: Request) {
   // (tracker.mjs delete doesn't yet share a lock with merge-tracker — see run-registry).
   const writeToken = kind === "evaluate" || kind === "pdf" ? acquireTrackerWrite() : null;
 
-  const child = spawn(binPath, args, { cwd: careerOpsRoot(), env: process.env });
+  // spawnCli handles the cross-platform launch (direct on POSIX/.exe; shell +
+  // stdin-delivered prompt on a Windows .cmd/.bat shim).
+  const child = spawnCli({ binPath, spec, isClaude, prompt, claudeArgs, cwd: careerOpsRoot() });
   const enc = new TextEncoder();
 
   // `closed` + kill timer in the OUTER scope so cancel() (client disconnect) can

@@ -38,7 +38,9 @@ export function TodayDashboard({
       .then((r) => r.json())
       .then((d) => {
         setFollowups(Array.isArray(d.entries) ? d.entries : []);
-        setOverdue(d.metadata?.overdue ?? d.entries?.length ?? 0);
+        // "Due" = overdue + urgent, matching the entries the route now surfaces.
+        const dueCount = d.metadata ? (d.metadata.overdue ?? 0) + (d.metadata.urgent ?? 0) : (d.entries?.length ?? 0);
+        setOverdue(dueCount);
       })
       .catch(() => {});
     fetch("/api/whats-new")

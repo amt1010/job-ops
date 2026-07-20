@@ -1,7 +1,6 @@
-import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { resolveCli } from "@/lib/clis";
+import { resolveCli, spawnCli } from "@/lib/clis";
 import { careerOpsRoot, readMemory } from "@/lib/career-ops";
 import { assembleDedupContext } from "@/lib/core/discover";
 
@@ -58,24 +57,19 @@ export async function POST(req: Request) {
   const prompt = `${mode}${OUTPUT_CONTRACT}${memoryLine}${knownBlock}\n\n--- USER INTENT ---\n${query}\n`;
 
   const isClaude = cliId === "claude";
-  const args = isClaude
-    ? [
-        "-p",
-        prompt,
-        "--output-format",
-        "stream-json",
-        "--verbose",
-        "--include-partial-messages",
-        "--permission-mode",
-        "acceptEdits",
-        "--allowedTools",
-        "Read,WebFetch,WebSearch,Glob,Grep", // WebSearch ADDED vs the read-only assistant
-        "--disallowedTools",
-        "Bash,Write,Edit,NotebookEdit,Task", // proposer-not-writer, by construction
-      ]
-    : spec.args(prompt);
-
-  const child = spawn(binPath, args, { cwd: careerOpsRoot(), env: process.env });
+  const child = spawnCli({
+    binPath,
+    spec,
+    isClaude,
+    prompt,
+    claudeArgs: [
+      "--output-format", "stream-json", "--verbose", "--include-partial-messages",
+      "--permission-mode", "acceptEdits",
+      "--allowedTools", "Read,WebFetch,WebSearch,Glob,Grep", // WebSearch ADDED vs the read-only assistant
+      "--disallowedTools", "Bash,Write,Edit,NotebookEdit,Task", // proposer-not-writer, by construction
+    ],
+    cwd: careerOpsRoot(),
+  });
 
   const encoder = new TextEncoder();
   // `closed` + kill timer in the OUTER scope so cancel() can flip `closed` before

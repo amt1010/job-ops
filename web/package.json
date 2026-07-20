@@ -5,8 +5,8 @@
   "description": "Official web experience for career-ops — local-first.",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "build": "node scripts/next-prod.mjs build",
+    "start": "node scripts/next-prod.mjs start",
     "typecheck": "tsc --noEmit",
     "test": "node --test test-clean-chips.mjs"
   },

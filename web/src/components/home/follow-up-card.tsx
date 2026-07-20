@@ -20,7 +20,7 @@ export function FollowUpCard({ followup, onLogged }: { followup: FollowUp; onLog
       await fetch("/api/followups/log", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ num: followup.num, company: followup.company, note: "Followed up" }),
+        body: JSON.stringify({ num: followup.num, company: followup.company, role: followup.role, note: "Followed up" }),
       });
     } catch {
       /* best-effort */

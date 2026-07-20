@@ -160,7 +160,7 @@ export function PipelineView({
                   : "border-transparent text-muted hover:text-foreground",
               )}
             >
-              {t} <span className="text-faint tabular-nums">{count}</span>
+              {t} <span className="text-faint tabular-nums">({count})</span>
             </button>
           );
         })}

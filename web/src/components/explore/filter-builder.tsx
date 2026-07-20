@@ -101,11 +101,9 @@ function Label({ children, hint }: { children: React.ReactNode; hint?: string })
 export function FilterBuilder({
   filters,
   onChange,
-  seededFrom = [],
 }: {
   filters: ExploreFilters;
   onChange: (f: ExploreFilters) => void;
-  seededFrom?: string[];
 }) {
   const [advanced, setAdvanced] = useState(false);
   const set = (patch: Partial<ExploreFilters>) => onChange({ ...filters, ...patch });
@@ -122,9 +120,9 @@ export function FilterBuilder({
       <div>
         <Label hint={filters.positive.length === 0 ? "empty = every fresh posting" : undefined}>Roles to find</Label>
         <KeywordField values={filters.positive} tone="inc" placeholder="AI platform, ML infrastructure, staff engineer…" onChange={(v) => set({ positive: v })} />
-        {seededFrom.length > 0 && filters.positive.length > 0 && (
-          <p className="mt-1 text-[11px] text-faint">Seeded from your {seededFrom.join(" + ")} — edit freely.</p>
-        )}
+        <p className="mt-1 text-[11px] text-faint">
+          Type a role and press <kbd className="rounded border border-border bg-surface-hover px-1 font-mono text-[10px]">Enter</kbd> (or a comma) to add it. Click the × on a tag to remove it.
+        </p>
       </div>
 
       <div>
@@ -134,7 +132,7 @@ export function FilterBuilder({
 
       <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
         <div>
-          <Label hint="postings published in this window">
+          <Label>
             <span className="inline-flex items-center gap-1.5">
               <Clock className="size-3.5 text-muted" /> Posted within
             </span>
@@ -154,6 +152,7 @@ export function FilterBuilder({
               </button>
             ))}
           </div>
+          <p className="mt-1 text-[11px] text-faint">postings published in this window</p>
         </div>
 
         <div>
