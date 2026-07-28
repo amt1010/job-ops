@@ -83,10 +83,18 @@ test("multi-word entries preserved: 'Costa Rica, South Africa, United States' �
   assert.deepEqual(cleanChips(parts), ["Costa Rica", "South Africa", "United States"]);
 });
 
-test("cap at 16: 20 comma-separated countries → 16 chips", () => {
-  const countries = Array.from({ length: 20 }, (_, i) => `Country${i + 1}`);
+test("realistic portals.yml config (33 roles) is fully preserved — not truncated", () => {
+  // Regression for job-ops#10: a real portals.yml has ~33 positive title
+  // filters. Capping them at 16 leaves the seeded field permanently AT the cap,
+  // so every newly-typed role is silently dropped ("unable to add new roles").
+  const roles = Array.from({ length: 33 }, (_, i) => `Role${i + 1}`);
+  assert.equal(cleanChips(roles).length, 33);
+});
+
+test("cap at 64: 80 comma-separated countries → 64 chips", () => {
+  const countries = Array.from({ length: 80 }, (_, i) => `Country${i + 1}`);
   const parts = split(countries.join(","));
-  assert.equal(cleanChips(parts).length, 16);
+  assert.equal(cleanChips(parts).length, 64);
 });
 
 test("'12345' → 1 chip (has digits)", () => {

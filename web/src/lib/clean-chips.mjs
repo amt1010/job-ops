@@ -3,7 +3,11 @@
 // test-clean-chips.mjs (which can't import .ts without a runner).
 // This is the single source of truth for the chip-cleaning logic.
 
-const CHIP_CAP = 16;
+// Guard against pathological pastes, but stay comfortably above a realistic
+// portals.yml (~33 positive title filters) with headroom to add more by hand.
+// A cap of 16 left seeded fields permanently at the limit, silently dropping
+// every newly-typed role (job-ops#10, "unable to add new roles").
+const CHIP_CAP = 64;
 
 /** Trim, drop empties, de-dupe case-insensitively, cap length. */
 export function cleanChips(v) {
