@@ -137,6 +137,13 @@ export function ExploreProvider({ children }: { children: React.ReactNode }) {
     touched.current = true;
     filtersRef.current = f;
     setFiltersState(f);
+    // Sync to the URL as the user edits (not just when a search runs) — otherwise
+    // an in-progress edit (e.g. typing "Roles to find") lives only in memory and a
+    // refresh silently discards it back to the seed (disc#6).
+    if (typeof window !== "undefined") {
+      const qs = filtersToParams(f);
+      window.history.replaceState(null, "", `/explore${qs ? `?${qs}` : ""}`);
+    }
   }, []);
   const initFilters = useCallback((f: ExploreFilters) => {
     if (touched.current) return;
